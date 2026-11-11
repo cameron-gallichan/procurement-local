@@ -1,0 +1,109 @@
+# procurement-local
+
+Runs graph-procurement and procurement-platform on your machine with a stubbed vendor login, so you can send GraphQL queries and mutations to the subgraph without Auth0.
+
+graph-procurement keeps its real JWT checks. The only change is where it fetches signing keys from: this folder serves its own key set on localhost, and `mint-token.sh` signs tokens with the matching private key. Whatever you put in the token's `sub` claim is the vendor user you are logged in as.
+
+## What's here
+
+| File | Purpose |
+|------|---------|
+| `start-procurement-local.sh` | Starts the key server, procurement-platform and graph-procurement, then prints a ready-to-use token. Ctrl-C stops all three. |
+| `mint-token.sh` | Signs a vendor JWT for a given `sub`. On first run it also creates `key.pem` and `jwks.json`. |
+| `key.pem`, `jwks.json` | Your local signing key and its public key set. Created on first run and git-ignored, so each person has their own. |
+| `token.txt` | The last token the start script wrote. Git-ignored. |
+| `logs/` | One log per service. Git-ignored. |
+
+## Prerequisites
+
+- A ws-monorepo checkout at `~/Workspace/ws-monorepo`, or set `REPO=/path/to/ws-monorepo`.
+- The local Postgres container `postgres_5432` with the procurement-platform migrations applied. From the monorepo:
+  ```bash
+  AWS_PROFILE=vikingdev make ecr-login && AWS_PROFILE=vikingdev make sql-start
+  ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db
+  ```
+- `docker`, `bazel`, `grpcurl`, `jq`, `python3`, `openssl`, `curl` and `lsof` on your `PATH`.
+- Network access to `enum.dev.sothelabs.com`, because both services load country reference data from it at start-up (`src/go/src/common/enum/lib.go`).
+
+## Usage
+
+```bash
+./start-procurement-local.sh          # token for the newest active vendor user in your database
+./start-procurement-local.sh --seed   # first create a new vendor, vendor user and an RFQ open for 14 days
+```
+
+When it prints **Ready** you have:
+
+| Service | Address |
+|---------|---------|
+| graph-procurement | `http://localhost:8081/graphql` (Apollo Sandbox at `http://localhost:8081/`) |
+| procurement-platform (gRPC) | `localhost:9090` |
+| Key server | `http://localhost:8099/jwks.json` |
+
+The token lasts one hour. Send it as a bearer token:
+
+```bash
+curl -s localhost:8081/graphql \
+  -H "Authorization: Bearer $(cat token.txt)" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ vendor { id name } }"}'
+```
+
+In Apollo Sandbox, add the same `Authorization` header under connection settings.
+
+### Logging in as a different vendor user
+
+`sub` must be the `external_id` of a row in `procurement_platform.vendor_user`:
+
+```bash
+docker exec postgres_5432 psql -U postgres -t -A \
+  -c "SELECT external_id FROM procurement_platform.vendor_user WHERE active"
+
+SUB='<external_id>' ./mint-token.sh > token.txt
+```
+
+`mint-token.sh` also takes `TTL` (seconds, default 3600) and `EXTRA_CLAIMS` (raw JSON fragment, for example `EXTRA_CLAIMS='"scope":"read"'`). graph-procurement only reads `sub` today, so extra claims are ignored unless you are testing code that reads them.
+
+### Changing ports
+
+If a port is already taken, the script stops and names the process holding it rather than killing it. Pick other ports with:
+
+```bash
+PP_PORT=9091 GP_PORT=8082 JWKS_PORT=8098 ./start-procurement-local.sh
+```
+
+Tokens carry the key server's URL as their issuer, so mint new ones after changing `JWKS_PORT`.
+
+## How it works
+
+1. **Checks.** Confirms the tools, the free ports, the Postgres container (starting it if stopped) and the procurement schema.
+2. **Key server.** Runs `python3 -m http.server` on this folder, so graph-procurement can fetch `jwks.json`.
+3. **Build.** One `bazel build` of both services.
+4. **procurement-platform.** Started with `TIER=dev`, `ENVIRONMENT=dev`, local Postgres without SSL or IAM, and gRPC on `PP_PORT`. The script waits for the gRPC health check.
+5. **graph-procurement.** Started with `TIER=dev`, `ENVIRONMENT=dev` and these overrides, then the script waits for `/healthz`:
+   - `PROCUREMENT_PLATFORM_SERVICE_ADDR=localhost:$PP_PORT` points it at the local backend.
+   - `AUTH0_JWKS_URL`, `AUTH0_JWT_ISSUERS` and `AUTH0_JWT_AUDIENCES` point it at the local key server instead of Auth0.
+6. **Token.** Mints a token for the seeded or newest vendor user and writes it to `token.txt`.
+7. **Watch.** If any of the three processes exits, the script stops the others and exits, so you never query a half-running stack.
+
+Where these settings come from in the monorepo:
+
+- The `AUTH0_*` variables are required config in `src/go/src/graph-procurement/main.go:35-37`.
+- The vendor identity is the token's subject, `src/go/src/graph-procurement/auth/authenticator.go:118`.
+- The backend address variable name is derived from the service name in `src/go/src/common/grpc/addr.go:27`.
+- `TIER` is required by the enum library both services load, `src/go/src/common/enum/lib.go:146`.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---------|---------------|
+| `TIER environment variable not configured` | You started a service by hand without `TIER`. Use the script, or export `TIER=dev`. |
+| `Unable to load countries` or a timeout at start-up | No route to `enum.dev.sothelabs.com`. Check your network or VPN connection. |
+| An authentication error from GraphQL | The token has expired, or was minted for a different `JWKS_PORT`. Run `mint-token.sh` again. |
+| A vendor lookup error with a valid token | The `sub` is not an active `vendor_user.external_id`. Query the table as shown above, or start with `--seed`. |
+| `port ... is already used by ...` | Another stack is running. Stop it, or override the ports. |
+| A service exits during start-up | The script prints the last 20 lines of its log. The full log is in `logs/`. |
+
+## Safety
+
+`key.pem` only works against a graph-procurement started with this folder's `jwks.json`. Dev, staging and prod check Auth0's keys, so a local token is rejected there. Keep `key.pem` out of git anyway: anyone with it can log in as any vendor on a stack that trusts your key set.
