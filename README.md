@@ -23,7 +23,16 @@ graph-procurement keeps its real JWT checks. The only change is where it fetches
   ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db
   ```
 - `docker`, `bazel`, `grpcurl`, `jq`, `python3`, `openssl`, `curl` and `lsof` on your `PATH`.
-- Network access to `enum.dev.sothelabs.com`, because both services load country reference data from it at start-up (`src/go/src/common/enum/lib.go`).
+
+### Expected start-up error when offline
+
+Both services may log this at start-up:
+
+```
+{"error":"...","level":"error","message":"Unable to load countries",...}
+```
+
+It is harmless for procurement and can be ignored. Both services import `staticstore` (through `common/shipping-platform/licence`), whose package `init()` looks up a country for each pickup location from the hosted enum store at `enum.dev.sothelabs.com` (`src/go/src/staticstore/pickup_location.go:387`, `:415`). The host is chosen from `TIER` with no local override (`src/go/src/common/enum/client/default_client.go`). Without network access the lookup fails, the error is logged, and the pickup locations get an empty country (`pickup_location.go:416-418`). Only auction-checkout reads that country (`src/go/src/auction-checkout/mapper/mapper_invoice.go:244`), so neither procurement service is affected. With network access, the error does not appear.
 
 ## Usage
 
@@ -98,7 +107,7 @@ Where these settings come from in the monorepo:
 | Symptom | Cause and fix |
 |---------|---------------|
 | `TIER environment variable not configured` | You started a service by hand without `TIER`. Use the script, or export `TIER=dev`. |
-| `Unable to load countries` or a timeout at start-up | No route to `enum.dev.sothelabs.com`. Check your network or VPN connection. |
+| `Unable to load countries` at start-up | Expected when `enum.dev.sothelabs.com` is unreachable, and harmless for procurement. See [Expected start-up error when offline](#expected-start-up-error-when-offline). |
 | An authentication error from GraphQL | The token has expired, or was minted for a different `JWKS_PORT`. Run `mint-token.sh` again. |
 | A vendor lookup error with a valid token | The `sub` is not an active `vendor_user.external_id`. Query the table as shown above, or start with `--seed`. |
 | `port ... is already used by ...` | Another stack is running. Stop it, or override the ports. |
