@@ -19,9 +19,10 @@ graph-procurement keeps its real JWT checks. The only change is where it fetches
 - A ws-monorepo checkout at `~/Workspace/ws-monorepo`, or set `REPO=/path/to/ws-monorepo`.
 - The local Postgres container `postgres_5432` with the procurement-platform migrations applied. From the monorepo:
   ```bash
-  AWS_PROFILE=vikingdev make ecr-login && AWS_PROFILE=vikingdev make sql-start
+  make ecr-login   # only if the postgres:18.3 image is not pulled yet
   ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db
   ```
+  This creates or starts the container and migrates only the procurement database. `make sql-start` runs the same script with `--all`, which migrates every database and is not needed here (`Makefile:15-16`).
 - `docker`, `bazel`, `grpcurl`, `jq`, `python3`, `openssl`, `curl` and `lsof` on your `PATH`.
 
 ### Expected start-up error when offline

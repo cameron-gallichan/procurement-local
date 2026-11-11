@@ -5,7 +5,7 @@
 # Usage: ./start-procurement-local.sh [--seed]
 #   --seed  registers a vendor, its user and an open RFQ first, and prints that vendor's token.
 #
-# Needs: Docker with the local Postgres from `make sql-start` (container postgres_5432),
+# Needs: Docker with the local Postgres from start-db-and-migrate.sh (container postgres_5432),
 # grpcurl, jq, python3, openssl, and mint-token.sh beside this script.
 set -euo pipefail
 
@@ -46,7 +46,7 @@ state=$(docker inspect -f '{{.State.Running}}' postgres_5432 2>/dev/null || echo
 case "$state" in
   true) ;;
   false) docker start postgres_5432 >/dev/null ;;
-  *) die "no postgres_5432 container. From $REPO run: AWS_PROFILE=vikingdev make ecr-login && AWS_PROFILE=vikingdev make sql-start" ;;
+  *) die "no postgres_5432 container. From $REPO run: ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db (run make ecr-login first if the postgres image is not pulled yet)" ;;
 esac
 for _ in $(seq 1 30); do
   docker exec postgres_5432 pg_isready -U postgres >/dev/null 2>&1 && break
