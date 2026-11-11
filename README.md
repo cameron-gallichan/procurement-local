@@ -49,7 +49,7 @@ When it prints **Ready** you have:
 | procurement-platform (gRPC) | `localhost:9090` |
 | Key server | `http://localhost:8099/jwks.json` |
 
-The token lasts one hour. Send it as a bearer token:
+The token lasts one hour. It is also copied to the clipboard on macOS (`pbcopy`), ready to paste into Apollo Sandbox. Send it as a bearer token:
 
 ```bash
 curl -s localhost:8081/graphql \

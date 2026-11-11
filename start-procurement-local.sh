@@ -134,6 +134,10 @@ echo "  Logs:             $LOGS"
 if [ -n "$sub" ]; then
   SUB="$sub" "$SCRIPTS/mint-token.sh" > "$SCRIPTS/token.txt"
   echo "  Token for vendor user $sub (valid 1 hour) saved to $SCRIPTS/token.txt"
+  # Without the trailing newline, so it pastes cleanly into a header field.
+  if command -v pbcopy >/dev/null && tr -d '\n' < "$SCRIPTS/token.txt" | pbcopy; then
+    echo "  Token copied to the clipboard"
+  fi
   echo "  New token later:  SUB='$sub' $SCRIPTS/mint-token.sh"
   echo
   echo "  Try it:"
