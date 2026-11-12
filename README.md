@@ -36,11 +36,11 @@ When it prints **Ready** you have:
 
 | Service | Address |
 |---------|---------|
-| graph-procurement | `http://localhost:8081/graphql` (Apollo Sandbox at `http://localhost:8081/`) |
+| graph-procurement | `http://localhost:8081/graphql` |
 | procurement-platform (gRPC) | `localhost:9090` |
 | Key server | `http://localhost:8099/jwks.json` |
 
-The token lasts one hour. It is also copied to the clipboard on macOS (`pbcopy`), ready to paste into Apollo Sandbox. Send it as a bearer token:
+The token lasts one hour. It is also copied to the clipboard on macOS (`pbcopy`), ready to paste into Gavel or send it as a bearer token:
 
 ```bash
 curl -s localhost:8081/graphql \
@@ -48,8 +48,6 @@ curl -s localhost:8081/graphql \
   -H 'Content-Type: application/json' \
   -d '{"query":"{ vendor { id name } }"}'
 ```
-
-In Apollo Sandbox, add the same `Authorization` header under connection settings.
 
 ### Logging in as a different vendor user
 
@@ -97,26 +95,6 @@ Where these settings come from in the monorepo:
 
 | Symptom | Cause and fix |
 |---------|---------------|
-| `TIER environment variable not configured` | You started a service by hand without `TIER`. Use the script, or export `TIER=dev`. |
-| `Unable to load countries` at start-up | Expected when `enum.dev.sothelabs.com` is unreachable, and harmless for procurement. See [Expected start-up error when offline](#expected-start-up-error-when-offline). |
+| `Unable to load countries` at start-up | Due to `staticstore`. Expected when `enum.dev.sothelabs.com` is unreachable, countries only required by `auction-checkout` service |
 | An authentication error from GraphQL | The token has expired, or was minted for a different `JWKS_PORT`. Run `mint-token.sh` again. |
-| A vendor lookup error with a valid token | The `sub` is not an active `vendor_user.external_id`. Query the table as shown above, or start with `--seed`. |
-| `port ... is already used by ...` | Another stack is running. Stop it, or override the ports. |
 | A service exits during start-up | The script prints the last 20 lines of its log. The full log is in `logs/`. |
-
-### Expected start-up error when offline
-
-Both services may log this at start-up:
-
-```
-{"error":"...","level":"error","message":"Unable to load countries",...}
-```
-
-It is harmless for procurement and can be ignored:
-- Both services import `staticstore` (through `common/shipping-platform/licence`), whose package `init()` looks up a country for each pickup location from the hosted enum store at `enum.dev.sothelabs.com` (`src/go/src/staticstore/pickup_location.go:387`, `:415`).
-- The host is chosen from `TIER` with no local override (`src/go/src/common/enum/client/default_client.go`). Without network access the lookup fails, the error is logged, and the pickup locations get an empty country (`pickup_location.go:416-418`).
-- Only auction-checkout reads that country (`src/go/src/auction-checkout/mapper/mapper_invoice.go:244`), so neither procurement service is affected. With network access, the error does not appear.
-
-## Safety
-
-`key.pem` only works against a graph-procurement started with this folder's `jwks.json`. Dev, staging and prod check Auth0's keys, so a local token is rejected there. Keep `key.pem` out of git anyway: anyone with it can log in as any vendor on a stack that trusts your key set.
