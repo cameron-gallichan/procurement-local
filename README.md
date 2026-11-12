@@ -4,25 +4,14 @@ Runs graph-procurement and procurement-platform on your machine with a stubbed v
 
 graph-procurement keeps its real JWT checks. The only change is where it fetches signing keys from: this folder serves its own key set on localhost, and `mint-token.sh` signs tokens with the matching private key. Whatever you put in the token's `sub` claim is the vendor user you are logged in as.
 
-## What's here
-
-| File | Purpose |
-|------|---------|
-| `start-procurement-local.sh` | Starts the key server, procurement-platform and graph-procurement, then prints a ready-to-use token. Ctrl-C stops all three. |
-| `mint-token.sh` | Signs a vendor JWT for a given `sub`. On first run it also creates `key.pem` and `jwks.json`. |
-| `key.pem`, `jwks.json` | Your local signing key and its public key set. Created on first run and git-ignored, so each person has their own. |
-| `token.txt` | The last token the start script wrote. Git-ignored. |
-| `logs/` | One log per service. Git-ignored. |
-
 ## Prerequisites
 
 - A ws-monorepo checkout at `~/Workspace/ws-monorepo`, or set `REPO=/path/to/ws-monorepo`.
-- The local Postgres container `postgres_5432` with the procurement-platform migrations applied. From the monorepo:
+- Apply migrations to `procurement-platform`. From the monorepo:
   ```bash
   make ecr-login   # only if the postgres:18.3 image is not pulled yet
   ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db
   ```
-  This creates or starts the container and migrates only the procurement database. `make sql-start` runs the same script with `--all`, which migrates every database and is not needed here (`Makefile:15-16`).
 - `docker`, `bazel`, `grpcurl`, `jq`, `python3`, `openssl`, `curl` and `lsof` on your `PATH`.
 
 ## Usage
