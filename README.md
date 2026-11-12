@@ -77,6 +77,6 @@ Tokens carry the key server's URL as their issuer, so mint new ones after changi
 
 | Symptom | Cause and fix |
 |---------|---------------|
-| `Unable to load countries` at start-up | Due to `staticstore`. Expected when `enum.dev.sothelabs.com` is unreachable, countries only required by `auction-checkout` service |
+| `Unable to load countries` at start-up | Due to `staticstore`. Expected as `enum.dev.sothelabs.com` is unreachable. Countries are only required by `auction-checkout` service |
 | An authentication error from GraphQL | The token has expired, or was minted for a different `JWKS_PORT`. Run `mint-token.sh` again. |
 | A service exits during start-up | The script prints the last 20 lines of its log. The full log is in `logs/`. |
