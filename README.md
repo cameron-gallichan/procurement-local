@@ -84,13 +84,6 @@ Tokens carry the key server's URL as their issuer, so mint new ones after changi
 6. **Token.** Mints a token for the seeded or newest vendor user and writes it to `token.txt`.
 7. **Watch.** If any of the three processes exits, the script stops the others and exits, so you never query a half-running stack.
 
-Where these settings come from in the monorepo:
-
-- The `AUTH0_*` variables are required config in `src/go/src/graph-procurement/main.go:35-37`.
-- The vendor identity is the token's subject, `src/go/src/graph-procurement/auth/authenticator.go:118`.
-- The backend address variable name is derived from the service name in `src/go/src/common/grpc/addr.go:27`.
-- `TIER` is required by the enum library both services load, `src/go/src/common/enum/lib.go:146`.
-
 ## Troubleshooting
 
 | Symptom | Cause and fix |
