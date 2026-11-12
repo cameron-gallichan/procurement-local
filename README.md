@@ -7,11 +7,7 @@ graph-procurement keeps its real JWT checks. The only change is where it fetches
 ## Prerequisites
 
 - A ws-monorepo checkout at `~/Workspace/ws-monorepo`, or set `REPO=/path/to/ws-monorepo`.
-- Apply migrations to `procurement-platform`. From the monorepo:
-  ```bash
-  make ecr-login   # only if the postgres:18.3 image is not pulled yet
-  ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db
-  ```
+- The `postgres:18.3` image pulled from ECR. If it is not pulled yet, run `make ecr-login` in the monorepo first.
 - `docker`, `bazel`, `grpcurl`, `jq`, `python3`, `openssl`, `curl` and `lsof` on your `PATH`.
 
 ## Usage
@@ -63,15 +59,16 @@ Tokens carry the key server's URL as their issuer, so mint new ones after changi
 
 ## How it works
 
-1. **Checks.** Confirms the tools, the free ports, the Postgres container (starting it if stopped) and the procurement schema.
-2. **Key server.** Runs `python3 -m http.server` on this folder, so graph-procurement can fetch `jwks.json`.
-3. **Build.** One `bazel build` of both services.
-4. **procurement-platform.** Started with `TIER=dev`, `ENVIRONMENT=dev`, local Postgres without SSL or IAM, and gRPC on `PP_PORT`. The script waits for the gRPC health check.
-5. **graph-procurement.** Started with `TIER=dev`, `ENVIRONMENT=dev` and these overrides, then the script waits for `/healthz`:
+1. **Checks.** Confirms the tools and the free ports.
+2. **Database.** Runs the monorepo's `start-db-and-migrate.sh` for `procurement-platform-db`. This creates or starts the `postgres_5432` container and applies any new migrations. Output goes to `logs/migrate.log`.
+3. **Key server.** Runs `python3 -m http.server` on this folder, so graph-procurement can fetch `jwks.json`.
+4. **Build.** One `bazel build` of both services.
+5. **procurement-platform.** Started with `TIER=dev`, `ENVIRONMENT=dev`, local Postgres without SSL or IAM, and gRPC on `PP_PORT`. The script waits for the gRPC health check.
+6. **graph-procurement.** Started with `TIER=dev`, `ENVIRONMENT=dev` and these overrides, then the script waits for `/healthz`:
    - `PROCUREMENT_PLATFORM_SERVICE_ADDR=localhost:$PP_PORT` points it at the local backend.
    - `AUTH0_JWKS_URL`, `AUTH0_JWT_ISSUERS` and `AUTH0_JWT_AUDIENCES` point it at the local key server instead of Auth0.
-6. **Token.** Mints a token for the seeded or newest vendor user and writes it to `token.txt`.
-7. **Watch.** If any of the three processes exits, the script stops the others and exits, so you never query a half-running stack.
+7. **Token.** Mints a token for the seeded or newest vendor user and writes it to `token.txt`.
+8. **Watch.** If any of the three processes exits, the script stops the others and exits, so you never query a half-running stack.
 
 ## Troubleshooting
 

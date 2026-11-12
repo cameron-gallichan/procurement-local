@@ -5,8 +5,8 @@
 # Usage: ./start-procurement-local.sh [--seed]
 #   --seed  registers a vendor, its user and an open RFQ first, and prints that vendor's token.
 #
-# Needs: Docker with the local Postgres from start-db-and-migrate.sh (container postgres_5432),
-# grpcurl, jq, python3, openssl, and mint-token.sh beside this script.
+# Needs: Docker, bazel, grpcurl, jq, python3, openssl, and mint-token.sh beside this script.
+# The local Postgres (container postgres_5432) is started and migrated by the monorepo's start-db-and-migrate.sh.
 set -euo pipefail
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
@@ -28,7 +28,7 @@ say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[31mError: %s\033[0m\n' "$*" >&2; exit 1; }
 psql_q() { docker exec postgres_5432 psql -U postgres -d postgres -t -A -c "$1"; }
 
-for tool in docker grpcurl jq python3 openssl curl; do
+for tool in docker bazel grpcurl jq python3 openssl curl; do
   command -v "$tool" >/dev/null || die "$tool is not installed"
 done
 [ -x "$SCRIPTS/mint-token.sh" ] || die "mint-token.sh not found next to this script"
@@ -41,21 +41,13 @@ for port in "$PP_PORT" "$GP_PORT" "$JWKS_PORT"; do
   [ -z "$holder" ] || die "port $port is already used by $holder. Stop it, or pick other ports with PP_PORT, GP_PORT and JWKS_PORT."
 done
 
-say "Checking the local Postgres"
-state=$(docker inspect -f '{{.State.Running}}' postgres_5432 2>/dev/null || echo missing)
-case "$state" in
-  true) ;;
-  false) docker start postgres_5432 >/dev/null ;;
-  *) die "no postgres_5432 container. From $REPO run: ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db (run make ecr-login first if the postgres image is not pulled yet)" ;;
-esac
-for _ in $(seq 1 30); do
-  docker exec postgres_5432 pg_isready -U postgres >/dev/null 2>&1 && break
-  sleep 1
-done
-psql_q "SELECT 1 FROM procurement_platform.vendor LIMIT 1" >/dev/null 2>&1 \
-  || die "the procurement_platform schema is missing. Apply the migrations with: ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db"
-
 mkdir -p "$LOGS"
+
+say "Starting the local Postgres and applying procurement-platform migrations (log: $LOGS/migrate.log)"
+# Creates or starts postgres_5432; Flyway skips migrations that are already applied.
+(cd "$REPO" && ./deployment/scripts/database/start-db-and-migrate.sh deployment/database/procurement-platform-db) \
+  >"$LOGS/migrate.log" 2>&1 \
+  || { tail -20 "$LOGS/migrate.log" >&2; die "migrations failed, see $LOGS/migrate.log (run make ecr-login in $REPO first if the postgres image is not pulled yet)"; }
 PIDS=()
 cleanup() {
   trap - EXIT INT TERM
